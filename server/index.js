@@ -3,16 +3,12 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 var cors = require('cors');
 const dotenv = require('dotenv');
-
 //use this npm to hide our password
 const bcrypt = require('bcrypt')
-
 //using it for tracking a user login
-const jwt = require('jsonwebtoken')
-
-
+const jwt = require('jsonwebtoken');
 const app = express();
-
+// const ejs = require("ejs");
 dotenv.config();
 
 //It passes the details which are coming from simple form 
@@ -21,6 +17,8 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json())
 app.use(cors());
 
+
+//schema for registration
 const User = mongoose.model('User', {
     Name: String,
     Email: { type: String, unique: true },
@@ -28,6 +26,21 @@ const User = mongoose.model('User', {
     Password: String,
 });
 
+
+//creating dataSchema in mongoDB for job entry
+const Jobdescription = mongoose.model('Jobdescription', {
+    CompanyName: String,
+    CompanyLogo: String,
+    JobPosition: String,
+    Salary: String,
+    jobtype: String,
+    RemoteORoffice: String,
+    Location: String,
+    JobDescription: String,
+    AboutCompany: String,
+    SkillsRequired: String,
+    Information: String,
+})
 
 //creating middleware for admin
 //using -headers(Meta data)
@@ -49,15 +62,7 @@ const isLoggedIn = (req, res, next) => {
         })
 
     }
-
-
 }
-
-
-//Authentication
-app.get('/dashboard', isLoggedIn, (req, res) => {
-    res.send(`Welcome :- ${req.InfoFromToken.Name}`)
-})
 
 
 //Authentication+admin(Authorization)
@@ -65,35 +70,27 @@ app.get('/admin', isLoggedIn, (req, res) => {
     res.send("This is admin Page")
 })
 
-
-
 app.get("/health", (req, res) => {
     res.status(200).json({ message: "Server is up and running" })
 })
 
-//GET /users (Read)
-app.get('/users', async (req, res) => {
-    try {
-        const users = await User.find()
-        res.json({
-            status: 'SUCCESS',
-            data: users
-        })
-    } catch (err) {
-        res.status(500).json({
-            status: 'FAIL',
-            message: 'Something went wrong'
-        })
-    }
-});
+//***************************** POST /users (Create)- register ****************************************
 
-// POST /users (Create)- register ***************************************************************
 app.post('/register', async (req, res) => {
     try {
         const { Name, Email, Mobile, Password } = req.body;
 
         const IsEmailExists = await User.findOne({ Email })
+        const IsMobileExists = await User.findOne({ Mobile })
 
+        if (IsEmailExists && IsMobileExists) {
+            //printing in vs code
+            console.log("Mobile and Email exists");
+            return res.status(500).json({
+                status: 'FAIL',
+                message: 'Mobile and Email Exists'
+            })
+        }
         if (IsEmailExists) {
             //printing in vs code
             console.log("Email exists");
@@ -102,6 +99,15 @@ app.post('/register', async (req, res) => {
                 message: 'Email Exists'
             })
         }
+        if (IsMobileExists) {
+            //printing in vs code
+            console.log("Mobile exists");
+            return res.status(500).json({
+                status: 'FAIL',
+                message: 'Mobile Exists'
+            })
+        }
+
 
         const encryptedPassword = await bcrypt.hash(Password, 10)
 
@@ -120,8 +126,7 @@ app.post('/register', async (req, res) => {
     }
 });
 
-
-//Login ***************************************************************
+//Login ****************************************************************************************
 app.post('/login', async (req, res) => {
     try {
         const { Email, Password } = req.body;
@@ -137,7 +142,6 @@ app.post('/login', async (req, res) => {
         //1st is whatever password comming from the client and another is the encrypted password saved in database
         let SavedPassword = await FindingUser.Password
         const passwordMatched = await bcrypt.compare(Password, SavedPassword);
-        console.log(passwordMatched);
         //if the password not matched return the same message
         if (!passwordMatched) {
             console.log("Invalid password");
@@ -150,8 +154,7 @@ app.post('/login', async (req, res) => {
         //If both email and password matched
         if (FindingUser && passwordMatched) {
             //1st parameter is complete user details and 2nd is a random password which should private to me.
-            const jwttoken = jwt.sign(FindingUser.toJSON(), process.env.jwt_SECRET, { expiresIn: 300 })
-
+            const jwttoken = jwt.sign(FindingUser.toJSON(), process.env.jwt_SECRET, { expiresIn: 100 })
             res.json({
                 status: 'SUCCESS',
                 message: `${FindingUser.Mobile} - logedin successfully!`,
@@ -159,7 +162,6 @@ app.post('/login', async (req, res) => {
             })
             console.log(`${FindingUser.Mobile} logedin`);
         }
-
     }
     catch (err) {
         console.log(err);
@@ -169,6 +171,63 @@ app.post('/login', async (req, res) => {
         })
     }
 });
+//************************************* Job description posting *************************************** */
+app.post("/addJob", async (req, res) => {
+
+    try {
+        //accesing data from Jobdescription page
+        const {
+            CompanyName,
+            CompanyLogo,
+            JobPosition,
+            Salary,
+            jobtype,
+            RemoteORoffice,
+            Location,
+            JobDescription,
+            AboutCompany,
+            SkillsRequired,
+            Information,
+        } = req.body;
+
+        //mongodb
+        await Jobdescription.create({
+            CompanyName,
+            CompanyLogo,
+            JobPosition,
+            Salary,
+            jobtype,
+            RemoteORoffice,
+            Location,
+            JobDescription,
+            AboutCompany,
+            SkillsRequired,
+            Information
+        })
+
+        res.json({
+            status: 'SUCCESS',
+            message: 'Job Description added successfully!'
+        })
+
+
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({
+            status: 'FAIL',
+            message: 'Something went wrong'
+        })
+    }
+
+})
+
+//*************************************getting all posted Job on homepage  *************************************** */
+app.get("/AllPostedJobs", async (req, res) => {
+    const jobs = await Jobdescription.find();
+    res.json(jobs)
+    console.log(jobs);
+})
+
 
 
 app.listen(process.env.PORT, () => {
