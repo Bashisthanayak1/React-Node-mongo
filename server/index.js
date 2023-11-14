@@ -42,11 +42,11 @@ const Jobdescription = mongoose.model('Jobdescription', {
     Information: String,
 })
 
-//creating middleware for admin
+//creating middleware for /admin
 //using -headers(Meta data)
 const isLoggedIn = (req, res, next) => {
     try {
-        const jwttoken = req.headers.token
+        const jwttoken = req.headers.jwttoken
         //trying to fetch all user information from token
         const InfoFromToken = jwt.verify(jwttoken, process.env.jwt_SECRET)
 
@@ -60,7 +60,6 @@ const isLoggedIn = (req, res, next) => {
             status: "Failed",
             message: "Please login first"
         })
-
     }
 }
 
@@ -108,7 +107,6 @@ app.post('/register', async (req, res) => {
             })
         }
 
-
         const encryptedPassword = await bcrypt.hash(Password, 10)
 
         await User.create({ Name, Email, Mobile, Password: encryptedPassword })
@@ -132,6 +130,7 @@ app.post('/login', async (req, res) => {
         const { Email, Password } = req.body;
         //checking if the email is registred or not
         const FindingUser = await User.findOne({ Email })
+
         if (!FindingUser) {
             console.log("Email not exists");
             return res.status(500).json({
@@ -154,7 +153,7 @@ app.post('/login', async (req, res) => {
         //If both email and password matched
         if (FindingUser && passwordMatched) {
             //1st parameter is complete user details and 2nd is a random password which should private to me.
-            const jwttoken = jwt.sign(FindingUser.toJSON(), process.env.jwt_SECRET, { expiresIn: 100 })
+            const jwttoken = jwt.sign(FindingUser.toJSON(), process.env.jwt_SECRET, { expiresIn: 60 })
             res.json({
                 status: 'SUCCESS',
                 message: `${FindingUser.Mobile} - logedin successfully!`,
@@ -171,6 +170,8 @@ app.post('/login', async (req, res) => {
         })
     }
 });
+
+
 //************************************* Job description posting *************************************** */
 app.post("/addJob", async (req, res) => {
 
@@ -210,7 +211,6 @@ app.post("/addJob", async (req, res) => {
             message: 'Job Description added successfully!'
         })
 
-
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -218,16 +218,58 @@ app.post("/addJob", async (req, res) => {
             message: 'Something went wrong'
         })
     }
-
 })
 
 //*************************************getting all posted Job on homepage  *************************************** */
-app.get("/AllPostedJobs", async (req, res) => {
+app.get("/AllPostedJobs", isLoggedIn, async (req, res) => {
     const jobs = await Jobdescription.find();
+    console.log(req.InfoFromToken);
     res.json(jobs)
-    console.log(jobs);
 })
 
+//*************************************getting  posted Job by saved id on viewjob page  *************************************** */
+app.get("/ViewJob/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const particarData = await Jobdescription.findById(id);
+        res.json(particarData)
+    } catch (error) {
+        console.log(error);
+    }
+})
+//*************************************getting  posted Job by saved id on viewjob page  *************************************** */
+app.get("/filters", async (req, res) => {
+    try {
+        // 1. filter criteria 2. what to return and not
+        const AfilterString = req.query.Afilter;
+        console.log("Received AfilterString:", AfilterString);
+
+        const Afilter = AfilterString.split(',').map(skill => new RegExp(skill.trim(), 'i'));
+        console.log("Parsed Afilter:", Afilter);
+        const JOB = await Jobdescription.find(
+            {
+                SkillsRequired: { $in: Afilter },
+            },
+            {
+                CompanyName: 1,
+                CompanyLogo: 1,
+                JobPosition: 1,
+                Salary: 1,
+                jobtype: 1,
+                RemoteORoffice: 1,
+                Location: 1,
+                JobDescription: 1,
+                AboutCompany: 1,
+                Information: 1,
+                SkillsRequired: 1// Exclude the Information field
+            }
+        );
+        res.json(JOB);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
 
 
 app.listen(process.env.PORT, () => {
@@ -236,27 +278,3 @@ app.listen(process.env.PORT, () => {
         .then(() => console.log(`Server running on ${process.env.PORT}`))
         .catch(error => console.log(error));
 })
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
