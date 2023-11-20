@@ -7,6 +7,8 @@ const dotenv = require('dotenv');
 const bcrypt = require('bcrypt')
 //using it for tracking a user login
 const jwt = require('jsonwebtoken');
+
+
 const app = express();
 // const ejs = require("ejs");
 dotenv.config();
@@ -16,7 +18,6 @@ app.use(bodyParser.urlencoded({ extended: false }));
 //To process json data we use this middleware
 app.use(bodyParser.json())
 app.use(cors());
-
 
 //schema for registration
 const User = mongoose.model('User', {
@@ -44,30 +45,54 @@ const Jobdescription = mongoose.model('Jobdescription', {
 
 //creating middleware for /admin
 //using -headers(Meta data)
-const isLoggedIn = (req, res, next) => {
+// const isLoggedIn = (req, res, next) => {
+//     try {
+//         const token = req.headers.authorization;
+
+//         if (token) {
+//             const InfoFromToken = jwt.verify(token, process.env.jwt_SECRET);
+//             req.user = InfoFromToken;
+//         } else {
+//             return res.status(401).json("JWT token not provided");
+//         }
+//         next();
+//     } catch (error) {
+//         console.log("Error in isLoggedIn middleware:", error.message);
+//         res.status(401).json({
+//             status: "Failed",
+//             message: "Unauthorized: Please login first",
+//         });
+//     }
+// };
+
+
+//verify jwt
+const verifyJWT = async (req, res, next) => {
     try {
-        const jwttoken = req.headers.jwttoken
-        //trying to fetch all user information from token
-        const InfoFromToken = jwt.verify(jwttoken, process.env.jwt_SECRET)
-
-        //Attach this user to request object 
-        req.InfoFromToken = InfoFromToken
-        next()
-
+        const getToken = await req.headers["x-access-token"];
+        console.log('getToken in verifyJWT is:-  ', getToken);
+        if (getToken) {
+            jwt.verify(await getToken, process.env.jwt_SECRET, (err, decoded) => {
+                if (err) {
+                    console.log(err);
+                    return res.json("jwtToken verify failed")
+                } else {
+                    console.log(decoded, "looging at verifyJWT");
+                    //sending
+                    req.userId = decoded;
+                    next();
+                }
+            })
+        } else {
+            return res.send("unable to get token from req.headers x - access - token")
+        }
     } catch (error) {
-        console.log(error);
-        res.json({
-            status: "Failed",
-            message: "Please login first"
-        })
+        console.error(error)
     }
 }
 
 
-//Authentication+admin(Authorization)
-app.get('/admin', isLoggedIn, (req, res) => {
-    res.send("This is admin Page")
-})
+
 
 app.get("/health", (req, res) => {
     res.status(200).json({ message: "Server is up and running" })
@@ -107,16 +132,16 @@ app.post('/register', async (req, res) => {
             })
         }
 
+        //converting our password to encrypt
         const encryptedPassword = await bcrypt.hash(Password, 10)
+        const Userdetails = await User.create({ Name, Email, Mobile, Password: encryptedPassword })
 
-        await User.create({ Name, Email, Mobile, Password: encryptedPassword })
-        res.json({
-            status: 'SUCCESS',
-            message: 'User added successfully!'
+        res.status(200).json({
+            user: Userdetails,
         })
-    } catch (err) {
+    }
+    catch (err) {
         console.log(err);
-
         res.status(500).json({
             status: 'FAIL',
             message: 'Something went wrong'
@@ -152,14 +177,17 @@ app.post('/login', async (req, res) => {
 
         //If both email and password matched
         if (FindingUser && passwordMatched) {
+            const userId = await FindingUser._id;
+
+            const token = await jwt.sign({ userId }, process.env.jwt_SECRET, { expiresIn: 15 })
+
             //1st parameter is complete user details and 2nd is a random password which should private to me.
-            const jwttoken = jwt.sign(FindingUser.toJSON(), process.env.jwt_SECRET, { expiresIn: 60 })
             res.json({
                 status: 'SUCCESS',
                 message: `${FindingUser.Mobile} - logedin successfully!`,
-                jwttoken: jwttoken,
+                token: token,
+                FindingUser: FindingUser,
             })
-            console.log(`${FindingUser.Mobile} logedin`);
         }
     }
     catch (err) {
@@ -173,7 +201,7 @@ app.post('/login', async (req, res) => {
 
 
 //************************************* Job description posting *************************************** */
-app.post("/addJob", async (req, res) => {
+app.post("/addJob", verifyJWT, async (req, res) => {
 
     try {
         //accesing data from Jobdescription page
@@ -220,25 +248,32 @@ app.post("/addJob", async (req, res) => {
     }
 })
 
+
 //*************************************getting all posted Job on homepage  *************************************** */
-app.get("/AllPostedJobs", isLoggedIn, async (req, res) => {
-    const jobs = await Jobdescription.find();
-    console.log(req.InfoFromToken);
-    res.json(jobs)
-})
+app.get("/AllPostedJobs", verifyJWT, async (req, res) => {
+    try {
+        const jobs = await Jobdescription.find();
+        console.log(req.headers["x-access-token"], "accessing from verifyJWT logging in /AllPostedJobs");
+        res.json(jobs);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
 
 //*************************************getting  posted Job by saved id on viewjob page  *************************************** */
-app.get("/ViewJob/:id", async (req, res) => {
+app.get("/ViewJob/:ID", verifyJWT, async (req, res) => {
     try {
-        const id = req.params.id;
-        const particarData = await Jobdescription.findById(id);
+        const ids = req.params.ID;
+        const particarData = await Jobdescription.findById(ids);
+        console.log(particarData);
         res.json(particarData)
     } catch (error) {
         console.log(error);
     }
 })
 //*************************************getting  posted Job by saved id on viewjob page  *************************************** */
-app.get("/filters", async (req, res) => {
+app.get("/filters", verifyJWT, async (req, res) => {
     try {
         // 1. filter criteria 2. what to return and not
         const AfilterString = req.query.Afilter;
