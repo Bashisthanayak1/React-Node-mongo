@@ -179,7 +179,7 @@ app.post('/login', async (req, res) => {
         if (FindingUser && passwordMatched) {
             const userId = await FindingUser._id;
 
-            const token = await jwt.sign({ userId }, process.env.jwt_SECRET, { expiresIn: 15 })
+            const token = await jwt.sign({ userId }, process.env.jwt_SECRET, { expiresIn: 10 })
 
             //1st parameter is complete user details and 2nd is a random password which should private to me.
             res.json({
